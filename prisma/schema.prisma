@@ -1,0 +1,432 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USERS (Tous les types d'utilisateurs)
+// ============================================
+
+enum UserRole {
+  CUSTOMER      // Client qui commande
+  RESTAURANT    // Partenaire restaurant
+  DELIVERY      // Livreur
+  ADMIN         // Admin eatinCotonou
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id                    String      @id @default(cuid())
+  email                 String      @unique
+  password              String?     // Optionnel si OAuth
+  phone                 String?
+  name                  String
+  role                  UserRole    @default(CUSTOMER)
+  status                UserStatus  @default(ACTIVE)
+  
+  // Profile data
+  profileImage          String?
+  address               String?
+  city                  String      @default("Cotonou")
+  latitude              Float?
+  longitude             Float?
+  
+  // Relations
+  restaurantProfile     Restaurant?
+  orders                Order[]
+  cartItems             CartItem[]
+  reviews               Review[]
+  deliveryOrders        Order[]     @relation("DeliveryPartner")
+  
+  // Timestamps
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+}
+
+// ============================================
+// RESTAURANTS
+// ============================================
+
+enum RestaurantStatus {
+  OPEN
+  CLOSED
+  UNDER_REVIEW
+  SUSPENDED
+}
+
+model Restaurant {
+  id                    String      @id @default(cuid())
+  
+  // Propriétaire
+  ownerId               String      @unique
+  owner                 User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Informations resto
+  name                  String
+  description           String?
+  logo                  String?
+  bannerImage           String?
+  
+  // Localisation
+  address               String
+  city                  String      @default("Cotonou")
+  latitude              Float
+  longitude             Float
+  
+  // Contacts
+  phone                 String?
+  email                 String?
+  
+  // Horaires
+  openTime              String      @default("11:30") // HH:mm
+  closeTime             String      @default("22:00") // HH:mm
+  isOpen                Boolean     @default(true)
+  
+  // Stats
+  rating                Float       @default(4.0)
+  reviewCount           Int         @default(0)
+  status                RestaurantStatus @default(OPEN)
+  
+  // Commission (%)
+  commissionPercentage  Float       @default(15.0)
+  
+  // Relations
+  meals                 Meal[]
+  orders                Order[]
+  reviews               Review[]
+  workingHours          WorkingHours[]
+  orderAnalytics        OrderAnalytics[]
+  // Timestamps
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@index([city])
+  @@index([status])
+}
+
+model WorkingHours {
+  id                    String      @id @default(cuid())
+  restaurantId          String
+  restaurant            Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  dayOfWeek             Int         // 0=Monday, 6=Sunday
+  openTime              String      // HH:mm
+  closeTime             String      // HH:mm
+  isClosed              Boolean     @default(false)
+  
+  @@unique([restaurantId, dayOfWeek])
+}
+
+// ============================================
+// MEALS (Plats)
+// ============================================
+
+enum CuisineType {
+  LOCAL           // Bénin
+  INDIAN          // Indien
+  CHINESE         // Chinois
+  ITALIAN         // Italien
+  EUROPEAN        // Européen
+  AFRICAN_OTHER   // Africain (autre)
+}
+
+enum AppetiteLevel {
+  LEGER           // Léger (salades, snacks, fruits)
+  CONSISTANT      // Consistant (vrais plats)
+}
+
+enum FlavorProfile {
+  SUCRE           // Sucré
+  SALE            // Salé
+  EPICE           // Épicé/Relevé
+  MIX             // Mix
+}
+
+enum MealType {
+  SALAD
+  SNACK
+  FRUIT
+  BREAKFAST
+  VEGETARIAN
+  GLUTEN_FREE
+  MAIN_COURSE
+  DESSERT
+  BEVERAGE
+}
+
+model Meal {
+  id                    String      @id @default(cuid())
+  
+  // Restaurant
+  restaurantId          String
+  restaurant            Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  // Informations plat
+  name                  String
+  description           String?
+  image                 String?
+  
+  // Prix
+  price                 Float       // en XOF
+  discountPrice         Float?      // Prix réduit
+  
+  // Meal-First properties ⭐
+  appetiteLevel         AppetiteLevel
+  cuisine               CuisineType
+  flavorProfile         FlavorProfile
+  mealType              MealType
+  
+  // Stock
+  isAvailable           Boolean     @default(true)
+  quantity              Int?        // Si stock limité
+  
+  // Stats
+  rating                Float       @default(4.0)
+  reviewCount           Int         @default(0)
+  orderCount            Int         @default(0)
+  
+  // Relations
+  orderItems            OrderItem[]
+  cartItems             CartItem[]
+  reviews               Review[]
+  
+  // Timestamps
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@index([restaurantId])
+  @@index([appetiteLevel])
+  @@index([cuisine])
+  @@index([flavorProfile])
+  @@index([isAvailable])
+}
+
+// ============================================
+// ORDERS & CART
+// ============================================
+
+enum OrderStatus {
+  PENDING             // En attente de confirmation
+  CONFIRMED           // Confirmée par restaurant
+  PREPARING           // En préparation
+  READY               // Prête à livrer
+  OUT_FOR_DELIVERY    // En route
+  DELIVERED           // Livrée
+  CANCELLED           // Annulée
+  FAILED              // Échec paiement
+}
+
+enum PaymentMethod {
+  CARD      // Stripe/KKiapay Carte
+  MOOV      // Moov Money
+  MTN       // MTN Mobile Money
+  COD       // Cash On Delivery
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+model Order {
+  id                    String      @id @default(cuid())
+  
+  // Client
+  customerId            String
+  customer              User        @relation(fields: [customerId], references: [id])
+  
+  // Restaurant
+  restaurantId          String
+  restaurant            Restaurant  @relation(fields: [restaurantId], references: [id])
+  
+  // Livreur (optionnel)
+  deliveryPartnerId     String?
+  deliveryPartner       User?       @relation("DeliveryPartner", fields: [deliveryPartnerId], references: [id])
+  
+  // Items
+  items                 OrderItem[]
+  
+  // Montants
+  subtotal              Float       // Somme des plats
+  deliveryFee           Float       @default(500)
+  tax                   Float       @default(0)
+  total                 Float
+  
+  // Adresse livraison
+  deliveryAddress       String
+  deliveryCity          String      @default("Cotonou")
+  deliveryLatitude      Float?
+  deliveryLongitude     Float?
+  deliveryNotes         String?
+  
+  // Status
+  status                OrderStatus @default(PENDING)
+  
+  // Paiement
+  paymentMethod         PaymentMethod
+  paymentId             String?     // ID externe (Stripe, KKiapay, etc)
+  payment               Payment?
+  
+  // Estimation temps
+  estimatedDeliveryTime Int?        // en minutes
+  
+  // Timestamps
+  confirmedAt           DateTime?
+  preparedAt            DateTime?
+  deliveredAt           DateTime?
+  cancelledAt           DateTime?
+  
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@index([customerId])
+  @@index([restaurantId])
+  @@index([status])
+  @@index([paymentMethod])
+}
+
+model OrderItem {
+  id                    String      @id @default(cuid())
+  
+  // Order
+  orderId               String
+  order                 Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  // Meal
+  mealId                String
+  meal                  Meal        @relation(fields: [mealId], references: [id])
+  
+  // Détails
+  quantity              Int
+  priceAtOrderTime      Float       // Prix au moment de la commande
+  specialNotes          String?     // "Pas de piment", etc
+  
+  @@unique([orderId, mealId])
+}
+
+model CartItem {
+  id                    String      @id @default(cuid())
+  
+  // User
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Meal
+  mealId                String
+  meal                  Meal        @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  
+  // Détails
+  quantity              Int
+  specialNotes          String?
+  
+  // Timestamp
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@unique([userId, mealId])
+}
+
+// ============================================
+// PAYMENTS
+// ============================================
+
+model Payment {
+  id                    String      @id @default(cuid())
+  
+  // Order
+  orderId               String      @unique
+  order                 Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  // Méthode
+  method                PaymentMethod
+  status                PaymentStatus @default(PENDING)
+  
+  // Montants
+  amount                Float
+  amountPaid            Float?
+  currency              String      @default("XOF")
+  
+  // Références externes
+  externalId            String?     // Stripe ID, KKiapay ID, etc
+  externalRef           String?     // Transaction reference
+  
+  // Error handling
+  errorCode             String?
+  errorMessage          String?
+  
+  // Timestamps
+  paidAt                DateTime?
+  failedAt              DateTime?
+  refundedAt            DateTime?
+  
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@index([method])
+  @@index([status])
+}
+
+// ============================================
+// REVIEWS & RATINGS
+// ============================================
+
+model Review {
+  id                    String      @id @default(cuid())
+  
+  // Author
+  authorId              String
+  author                User        @relation(fields: [authorId], references: [id])
+  
+  // Target (peut être resto ou plat)
+  restaurantId          String?
+  restaurant            Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  mealId                String?
+  meal                  Meal?       @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  
+  // Contenu
+  rating                Int         // 1-5 stars
+  comment               String?
+  
+  // Timestamps
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  
+  @@index([restaurantId])
+  @@index([mealId])
+  @@index([authorId])
+}
+
+// ============================================
+// ANALYTICS (Optional but useful)
+// ============================================
+
+model OrderAnalytics {
+  id                    String      @id @default(cuid())
+  
+  restaurantId          String
+  restaurant            Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  date                  DateTime
+  ordersCount           Int         @default(0)
+  revenue               Float       @default(0)
+  averageOrderValue     Float       @default(0)
+  
+  @@unique([restaurantId, date])
+  @@index([restaurantId])
+}
