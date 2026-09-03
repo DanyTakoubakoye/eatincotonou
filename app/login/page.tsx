@@ -27,7 +27,7 @@ export default function LoginPage() {
             if (result?.error) {
                 setError(result.error);
             } else if (result?.ok) {
-                router.push('/restaurants');
+                router.push('/');
             }
         } catch (err) {
             setError('An error occurred during login');
