@@ -49,9 +49,16 @@ export default function RestaurantsPage() {
             const response = await fetch(`/api/meals?${params.toString()}`);
             const data = await response.json();
 
-            setMeals(data);
+            // Vérifier que c'est un array
+            if (Array.isArray(data)) {
+                setMeals(data);
+            } else {
+                console.error('API did not return an array:', data);
+                setMeals([]);
+            }
         } catch (error) {
             console.error('Error fetching meals:', error);
+            setMeals([]);
         } finally {
             setLoading(false);
         }

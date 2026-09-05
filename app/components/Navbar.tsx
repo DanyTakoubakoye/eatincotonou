@@ -5,7 +5,7 @@ import { useCartStore } from '@/store/cartStore';
 import { signOut, useSession } from 'next-auth/react';
 
 export function Navbar() {
-    const session = useSession();
+    const { data: session, status } = useSession();
     const cartItems = useCartStore((state) => state.items.length);
 
     return (
@@ -39,10 +39,10 @@ export function Navbar() {
                     </Link>
 
                     {/* User Menu */}
-                    {session?.data?.user ? (
-                        <div className="flex gap-4">
+                    {status === 'authenticated' && session?.user ? (
+                        <div className="flex gap-4 items-center">
                             <span className="text-sm text-gray-600">
-                                Bienvenue, {session.data.user.name}
+                                Bienvenue, {session.user.name}
                             </span>
                             <button
                                 onClick={() => signOut()}
