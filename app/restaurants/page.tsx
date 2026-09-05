@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useCartStore } from '@/store/cartStore';
 import Link from 'next/link';
 
 interface Meal {
@@ -14,6 +15,7 @@ interface Meal {
     cuisine: string;
     flavorProfile: string;
     rating: number;
+    reviewCount: number;
     restaurant: {
         id: string;
         name: string;
@@ -28,6 +30,7 @@ export default function RestaurantsPage() {
     const [appetiteLevel, setAppetiteLevel] = useState<string>(''); // LEGER ou CONSISTANT
     const [flavorProfile, setFlavorProfile] = useState<string>(''); // SUCRE, SALE, EPICE, MIX
     const [cuisine, setCuisine] = useState<string>(''); // LOCAL, INDIAN, etc
+    const addToCart = useCartStore((state) => state.addToCart);
 
     // Charger les plats
     useEffect(() => {
@@ -236,7 +239,23 @@ export default function RestaurantsPage() {
                                     </div>
 
                                     {/* Add to Cart Button */}
-                                    <button className="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-600">
+                                    <button
+                                        onClick={() => {
+                                            addToCart({
+                                                id: `${meal.id}-${Date.now()}`,
+                                                mealId: meal.id,
+                                                mealName: meal.name,
+                                                price: meal.discountPrice || meal.price,
+                                                quantity: 1,
+                                                restaurantId: meal.restaurant.id,
+                                                restaurantName: meal.restaurant.name,
+                                                restaurantLogo: meal.restaurant.logo,
+                                                image: meal.image,
+                                            });
+                                            alert('✅ Plat ajouté au panier!');
+                                        }}
+                                        className="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-600"
+                                    >
                                         + Ajouter au panier
                                     </button>
                                 </div>
